@@ -15,6 +15,7 @@ package com.github.rubensousa.gravitysnaphelper;
  * limitations under the License.
  */
 
+import android.os.Handler;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
@@ -34,22 +35,31 @@ import androidx.recyclerview.widget.RecyclerView;
  */
 public abstract class SnapHelper extends RecyclerView.OnFlingListener {
 
-    static final float MILLISECONDS_PER_INCH = 100f;
+    static final float MILLISECONDS_PER_INCH = 50f;
 
     RecyclerView mRecyclerView;
     private Scroller mGravityScroller;
+    private Handler mHandler = new Handler();
 
     // Handles the snap on scroll case.
     private final RecyclerView.OnScrollListener mScrollListener =
             new RecyclerView.OnScrollListener() {
                 boolean mScrolled = false;
+                boolean mSnapDone = true;
 
                 @Override
                 public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
                     super.onScrollStateChanged(recyclerView, newState);
-                    if (newState == RecyclerView.SCROLL_STATE_IDLE && mScrolled) {
+                    if ((newState == RecyclerView.SCROLL_STATE_SETTLING
+                            || newState == RecyclerView.SCROLL_STATE_IDLE)
+                            && mScrolled && mSnapDone) {
                         mScrolled = false;
-                        snapToTargetExistingView();
+                        mSnapDone = false;
+                        mHandler.postDelayed(() -> {
+                            recyclerView.stopScroll();
+                            snapToTargetExistingView();
+                            mSnapDone = true;
+                        }, (long) MILLISECONDS_PER_INCH * 3);
                     }
                 }
 
@@ -193,7 +203,44 @@ public abstract class SnapHelper extends RecyclerView.OnFlingListener {
         }
         int[] snapDistance = calculateDistanceToFinalSnap(layoutManager, snapView);
         if (snapDistance[0] != 0 || snapDistance[1] != 0) {
-            mRecyclerView.smoothScrollBy(snapDistance[0], snapDistance[1]);
+            //mRecyclerView.smoothScrollBy(snapDistance[0], snapDistance[1]);
+            mHandler.post(new HackyScroll(snapDistance));
+        }
+    }
+
+    private class HackyScroll implements Runnable {
+        private final int STEP = 40;
+        private final int SIG_X;
+        private final int SIG_Y;
+
+        private int distance[];
+        HackyScroll(int [] distance) {
+            SIG_X = (int) Math.signum(distance[0]);
+            SIG_Y = (int) Math.signum(distance[1]);
+
+            this.distance = distance;
+            this.distance[0] = Math.abs(this.distance[0]);
+            this.distance[1] = Math.abs(this.distance[1]);
+        }
+
+        @Override
+        public void run() {
+            int dx = getD(distance[0]);
+            int dy = getD(distance[1]);
+
+            distance[0] -= dx;
+            distance[1] -= dy;
+
+            mRecyclerView.scrollBy(dx * SIG_X, dy * SIG_Y);
+            if (distance[0] > 0 || distance[1] > 0) {
+                mHandler.postDelayed(this, 1);
+            }
+        }
+
+        private int getD(int distance) {
+            if (distance < STEP)
+                return distance;
+            return STEP;
         }
     }
 
