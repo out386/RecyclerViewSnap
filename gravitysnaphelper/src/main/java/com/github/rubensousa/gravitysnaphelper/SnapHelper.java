@@ -23,6 +23,7 @@ import android.widget.Scroller;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -36,6 +37,7 @@ import androidx.recyclerview.widget.RecyclerView;
 public abstract class SnapHelper extends RecyclerView.OnFlingListener {
 
     static final float MILLISECONDS_PER_INCH = 50f;
+    private static final int SLOP = 3;  // Should be calculated with display density in mind, but IDC: "Works on my machine".
 
     RecyclerView mRecyclerView;
     private Scroller mGravityScroller;
@@ -46,25 +48,32 @@ public abstract class SnapHelper extends RecyclerView.OnFlingListener {
             new RecyclerView.OnScrollListener() {
                 boolean mScrolled = false;
                 boolean mSnapDone = true;
+                int dx;
+                int dy;
 
                 @Override
                 public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
                     super.onScrollStateChanged(recyclerView, newState);
-                    if ((newState == RecyclerView.SCROLL_STATE_SETTLING
-                            || newState == RecyclerView.SCROLL_STATE_IDLE)
-                            && mScrolled && mSnapDone) {
+                    if (newState != RecyclerView.SCROLL_STATE_DRAGGING
+                    && mScrolled && mSnapDone) {
                         mScrolled = false;
                         mSnapDone = false;
                         mHandler.postDelayed(() -> {
                             recyclerView.stopScroll();
-                            snapToTargetExistingView();
+
+                            if (Math.max(Math.abs(dx), Math.abs(dy)) > SLOP)  //TODO: get orientation from LayoutManager
+                                snapToNextView(dx, dy);
+                            else
+                                snapToTargetExistingView();
                             mSnapDone = true;
-                        }, (long) MILLISECONDS_PER_INCH * 3);
+                        }, (long) MILLISECONDS_PER_INCH);
                     }
                 }
 
                 @Override
                 public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                    this.dx = dx;
+                    this.dy = dy;
                     if (dx != 0 || dy != 0) {
                         mScrolled = true;
                     }
@@ -208,8 +217,44 @@ public abstract class SnapHelper extends RecyclerView.OnFlingListener {
         }
     }
 
+    void snapToNextView(int dx, int dy) {
+        if (mRecyclerView == null) {
+            return;
+        }
+        RecyclerView.LayoutManager layoutManager = mRecyclerView.getLayoutManager();
+        if (layoutManager == null) {
+            return;
+        }
+        if (!(layoutManager instanceof LinearLayoutManager)) {
+            return;
+        }
+        View snapView;
+        LinearLayoutManager lm = (LinearLayoutManager) layoutManager;
+        int dir = 0;
+
+        if (lm.canScrollHorizontally())
+            dir = dx;
+        else if (lm.canScrollVertically())
+            dir = dy;
+
+        if (dir > 0)
+            snapView = lm.findViewByPosition(lm.findFirstCompletelyVisibleItemPosition());
+        else
+            snapView = lm.findViewByPosition(lm.findFirstVisibleItemPosition());
+
+        //View snapView = findSnapView(layoutManager);
+        if (snapView == null) {
+            return;
+        }
+        int[] snapDistance = calculateDistanceToFinalSnap(layoutManager, snapView);
+        if (snapDistance[0] != 0 || snapDistance[1] != 0) {
+            //mRecyclerView.smoothScrollBy(snapDistance[0], snapDistance[1]);
+            mHandler.post(new HackyScroll(snapDistance));
+        }
+    }
+
     private class HackyScroll implements Runnable {
-        private final int STEP = 40;
+        private final int STEP = 30;
         private final int SIG_X;
         private final int SIG_Y;
 
