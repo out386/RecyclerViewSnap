@@ -22,7 +22,6 @@ import android.view.MotionEvent;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 /**
@@ -33,7 +32,6 @@ public class OrientationAwareRecyclerView extends RecyclerView {
 
     private float lastX = 0.0f;
     private float lastY = 0.0f;
-    private int orientation = RecyclerView.VERTICAL;
     private boolean scrolling = false;
 
     public OrientationAwareRecyclerView(@NonNull Context context) {
@@ -45,8 +43,8 @@ public class OrientationAwareRecyclerView extends RecyclerView {
     }
 
     public OrientationAwareRecyclerView(@NonNull Context context, @Nullable AttributeSet attrs,
-                                        int defStyle) {
-        super(context, attrs, defStyle);
+                                        int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         addOnScrollListener(new OnScrollListener() {
             @Override
             public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
@@ -57,15 +55,12 @@ public class OrientationAwareRecyclerView extends RecyclerView {
     }
 
     @Override
-    public void setLayoutManager(@Nullable LayoutManager layout) {
-        super.setLayoutManager(layout);
-        if (layout instanceof LinearLayoutManager) {
-            orientation = ((LinearLayoutManager) layout).getOrientation();
-        }
-    }
-
-    @Override
     public boolean onInterceptTouchEvent(MotionEvent e) {
+        final LayoutManager lm = getLayoutManager();
+        if (lm == null) {
+            return super.onInterceptTouchEvent(e);
+        }
+
         boolean allowScroll = true;
 
         switch (e.getActionMasked()) {
@@ -87,8 +82,7 @@ public class OrientationAwareRecyclerView extends RecyclerView {
                 float currentY = e.getY();
                 float dx = Math.abs(currentX - lastX);
                 float dy = Math.abs(currentY - lastY);
-                allowScroll = dy > dx ? orientation == RecyclerView.VERTICAL
-                        : orientation == RecyclerView.HORIZONTAL;
+                allowScroll = dy > dx ? lm.canScrollVertically() : lm.canScrollHorizontally();
                 break;
             }
         }
